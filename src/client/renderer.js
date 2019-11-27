@@ -13,17 +13,15 @@ import onesignalAppId from "../common/onesignalAppId";
 
 // import { onesignalAppId } from "../common/parameters";
 
-
 const isDev = process.env.NODE_ENV === "development";
 
-
-export default async(req, store, context, res) => {
-    let language = req.renderLang;
-    let assetHost = "/images";
-    const sheet = new ServerStyleSheet();
-    let jsx;
-    const helmet = Helmet.renderStatic();
-    const htmlStart = `
+export default async (req, store, context, res) => {
+  let language = req.renderLang;
+  let assetHost = "/images";
+  const sheet = new ServerStyleSheet();
+  let jsx;
+  const helmet = Helmet.renderStatic();
+  const htmlStart = `
         <!DOCTYPE html>
         <html lang="en">
             <head>
@@ -52,59 +50,78 @@ export default async(req, store, context, res) => {
                 <meta name="msapplication-TileColor" content="#00968b">
                 <meta name="msapplication-TileImage" content="${assetHost}/ms-icon-144x144.png">
                 <meta name="theme-color" content="#00968b">
-                <link href='${process.env.NODE_ENV === "development" ? "/font.css" : "/font-prod.css"}' rel="stylesheet" />
-                ${process.env.NODE_ENV === "production" ? `
-                    <!-- TASK 3B: paste scripts from ONESIGNAL -->
-                ` : ""}
+                <link href='${
+                  process.env.NODE_ENV === "development"
+                    ? "/font.css"
+                    : "/font-prod.css"
+                }' rel="stylesheet" />
+                ${
+                  process.env.NODE_ENV === "production"
+                    ? `
+                <script src="https://cdn.onesignal.com/sdks/OneSignalSDK.js" async=""></script>
+                <script>
+                  var OneSignal = window.OneSignal || [];
+                  OneSignal.push(function() {
+                    OneSignal.init({
+                      appId: "${onesignalAppId}",
+                    });
+                  });
+                </script>
+                `
+                    : ""
+                }
             </head>
             <body>
                 <div id="root">`;
 
-    const htmlEnd = `</div>
+  const htmlEnd = `</div>
             <div id="modal-root"></div>
             <div id="notification-root"></div>
-            ${!isDev ? `<script> window.INITIAL_STATE = ${serialize(store.getState())}</script>` : ""}
+            ${
+              !isDev
+                ? `<script> window.INITIAL_STATE = ${serialize(
+                    store.getState()
+                  )}</script>`
+                : ""
+            }
             <script src="/bundle.js"></script>
         </body>
     </html>`;
-    if (context.url) {
-        return res.redirect(301, context.url);
+  if (context.url) {
+    return res.redirect(301, context.url);
+  }
+  if (process.env.NODE_ENV === "development") {
+    return res.send(htmlStart + htmlEnd);
+  }
+  let headWritten = false;
+  let jsxDone = false;
+  res.write(htmlStart, () => {
+    headWritten = true;
+    if (jsxDone) {
+      streamData(jsx, sheet, res, htmlEnd);
     }
-    if (process.env.NODE_ENV === "development") {
-        return res.send(htmlStart + htmlEnd);
-    }
-    let headWritten = false;
-    let jsxDone = false;
-    res.write(htmlStart, () => {
-        headWritten = true;
-        if (jsxDone) {
-            streamData(jsx, sheet, res, htmlEnd);
-        }
-    });
+  });
 
-    jsx = sheet.collectStyles(
-        <Provider store={store}>
-            <StaticRouter location={req.path} context={context}>
-                <StyleSheetManager sheet={sheet.instance}>
-                    {renderRoutes(routes)}
-                </StyleSheetManager>
-            </StaticRouter>
-        </Provider>
-    );
-    jsxDone = true;
-    if (headWritten) {
-        streamData(jsx, sheet, res, htmlEnd);
-    }
+  jsx = sheet.collectStyles(
+    <Provider store={store}>
+      <StaticRouter location={req.path} context={context}>
+        <StyleSheetManager sheet={sheet.instance}>
+          {renderRoutes(routes)}
+        </StyleSheetManager>
+      </StaticRouter>
+    </Provider>
+  );
+  jsxDone = true;
+  if (headWritten) {
+    streamData(jsx, sheet, res, htmlEnd);
+  }
 };
 
 const streamData = (jsx, sheet, res, htmlEnd) => {
-    let stream = sheet.interleaveWithNodeStream(renderToNodeStream(jsx));
-    stream.pipe(
-        res,
-        { end: false }
-    );
-    stream.on("end", () => {
-        res.write(htmlEnd);
-        res.end();
-    });
+  let stream = sheet.interleaveWithNodeStream(renderToNodeStream(jsx));
+  stream.pipe(res, { end: false });
+  stream.on("end", () => {
+    res.write(htmlEnd);
+    res.end();
+  });
 };
